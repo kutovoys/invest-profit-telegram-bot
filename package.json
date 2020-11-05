@@ -1,0 +1,21 @@
+{
+  "name": "invest-profit-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for monitoring your investments",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "server": "nodemon app.js"
+  },
+  "author": "Sergey Kutovoy <kutovoy.s@gmail.com>",
+  "license": "ISC",
+  "dependencies": {
+    "config": "^3.3.2",
+    "mongodb": "^3.6.2",
+    "node-fetch": "^2.6.1",
+    "telegraf": "^3.38.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.6"
+  }
+}

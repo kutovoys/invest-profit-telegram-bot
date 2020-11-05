@@ -1,0 +1,4 @@
+{
+  "token": "Bot Token",
+  "mongoUri": "mongoDB connection URL"
+}
