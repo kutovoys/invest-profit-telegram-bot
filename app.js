@@ -3,7 +3,10 @@ const Extra = require('telegraf/extra')
 const mongo = require('mongodb').MongoClient
 const config = require('config')
 const fetch = require('node-fetch')
+const { Markup } = require('telegraf/extra')
 const bot = new Telegraf(config.get('token'))
+
+let menuMarkup = [['/portfolio'], ['/buy', '/sell']]
 
 mongo.connect(
   config.get('mongoUri'),
@@ -16,13 +19,15 @@ mongo.connect(
     db = client.db('tgbot')
     bot.launch()
     console.log('Bot started...')
-    // bot.startPolling()
   }
 )
 
 bot.start((ctx) => {
   console.log('Id пользователя:', ctx.from.id)
-  return ctx.reply('Добро пожаловать!')
+  return ctx.reply(
+    'Добро пожаловать!',
+    Extra.markup(Markup.keyboard(menuMarkup).resize())
+  )
 })
 
 bot.command('portfolio', async (ctx) => {
@@ -48,7 +53,6 @@ bot.command('portfolio', async (ctx) => {
       if (tickerSummNow < tickerSumm) {
         trend = '📉  -'
         percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
-        sticker = '🤦‍♂️  -'
       } else if (tickerSummNow > tickerSumm) {
         trend = '📈  +'
         percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
@@ -80,6 +84,13 @@ bot.command('portfolio', async (ctx) => {
     let portfolioSummNowRub = portfolioSummNow * priceRub
     let profitRub = Math.abs(portfolioSummRub - portfolioSummNowRub)
     let profitUsd = Math.abs(portfolioSummNow - portfolioSumm)
+    if (portfolioSumm > portfolioSummNow) {
+      sticker = '🤦‍♂️  -'
+    } else if (portfolioSumm < portfolioSummNow) {
+      sticker = '💰  +'
+    } else {
+      sticker = '⚖️  '
+    }
     MESSAGE =
       MESSAGE +
       '💼 *Весь портфель:*\n' +
@@ -98,7 +109,10 @@ bot.command('portfolio', async (ctx) => {
       profitRub.toFixed(0) +
       '₽\n'
     console.log(MESSAGE)
-    return ctx.reply(MESSAGE, Extra.markdown())
+    return ctx.reply(
+      MESSAGE,
+      Extra.markdown().markup(Markup.keyboard(menuMarkup).resize())
+    )
   }
 })
 
@@ -111,6 +125,6 @@ async function getPrice(ID) {
     const value = json.quoteSummary.result[0].price.regularMarketPrice.raw
     return value
   } catch (e) {
-    console.log('Ошибка в USAStockGetPrice')
+    console.log('Ошибка в getPrice')
   }
 }
