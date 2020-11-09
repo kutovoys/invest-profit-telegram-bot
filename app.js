@@ -116,6 +116,112 @@ bot.command('portfolio', async (ctx) => {
   }
 })
 
+bot.command('buy', async (ctx) => {
+  let buyMessage = ctx.message.text.split(/\s+/)
+  let ticker = buyMessage[1]
+  let count = Number(buyMessage[2])
+  let price = Number(buyMessage[3])
+  if (buyMessage[4] != undefined) {
+    transactionDate = buyMessage[4]
+  } else {
+    transactionDate = new Date().toLocaleDateString('ru')
+  }
+  let tickerSumm = count * price
+  nowPrice = await getPrice(ticker)
+  let dbData = await db
+    .collection(String(ctx.from.id))
+    .findOne({ name: ticker })
+  if (dbData !== null && nowPrice !== undefined) {
+    newValues = {
+      $set: {
+        full_count: dbData.full_count + count,
+        full_price: dbData.full_price + tickerSumm,
+      },
+      $push: {
+        transactions: {
+          operation: 'buy',
+          date: transactionDate,
+          ticker_name: ticker,
+          trans_count: count,
+          trans_price: price,
+        },
+      },
+    }
+    await db
+      .collection(String(ctx.from.id))
+      .updateOne({ name: ticker }, newValues)
+    ctx.reply(
+      `Покупка тикера ${ticker} в количестве ${count} по цене: ${price}. Сумма покупки: ${tickerSumm}`
+    )
+  } else if (dbData === null && nowPrice !== undefined) {
+    await db.collection(String(ctx.from.id)).insertOne({
+      name: ticker,
+      full_count: count,
+      full_price: tickerSumm,
+      transactions: [
+        {
+          operation: 'buy',
+          date: transactionDate,
+          ticker_name: ticker,
+          trans_count: count,
+          trans_price: price,
+        },
+      ],
+    })
+    ctx.reply(
+      `Покупка тикера ${ticker} в количестве ${count} по цене: ${price}. Сумма покупки: ${tickerSumm}`
+    )
+  } else {
+    ctx.reply(`Не могу найти тикер ${ticker}. Проверьте написание.`)
+  }
+})
+
+bot.command('sell', async (ctx) => {
+  let buyMessage = ctx.message.text.split(/\s+/)
+  let ticker = buyMessage[1]
+  let count = Number(buyMessage[2])
+  let price = Number(buyMessage[3])
+  if (buyMessage[4] != undefined) {
+    transactionDate = buyMessage[4]
+  } else {
+    transactionDate = new Date().toLocaleDateString('ru')
+  }
+  let tickerSumm = count * price
+  nowPrice = await getPrice(ticker)
+  let dbData = await db
+    .collection(String(ctx.from.id))
+    .findOne({ name: ticker })
+  if (dbData !== null && nowPrice !== undefined) {
+    newValues = {
+      $set: {
+        full_count: dbData.full_count - count,
+        full_price: dbData.full_price - tickerSumm,
+      },
+      $push: {
+        transactions: {
+          operation: 'sell',
+          date: transactionDate,
+          ticker_name: ticker,
+          trans_count: count,
+          trans_price: price,
+        },
+      },
+    }
+    await db
+      .collection(String(ctx.from.id))
+      .updateOne({ name: ticker }, newValues)
+    ctx.reply(
+      `Продажа тикера ${ticker} в количестве ${count} по цене: ${price}. Сумма продажи: ${tickerSumm}`
+    )
+  } else if (dbData === null && nowPrice !== undefined) {
+    ctx.reply(
+      `Вы не можете продать ${ticker}. Данного тикера нет в вашем портфеле`
+    )
+  } else {
+    ctx.reply(`Не могу найти тикер ${ticker}. Проверьте написание.`)
+  }
+})
+
 async function getPrice(ID) {
   //получаем имя бумаги
   const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ID}?modules=price`
