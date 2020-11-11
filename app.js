@@ -49,14 +49,12 @@ bot.command('portfolio', async (ctx) => {
       let tickerSummNow = tickerCount * tickerPrice
       portfolioSumm += tickerSumm
       portfolioSummNow += tickerSummNow
+      percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
 
       if (tickerSummNow < tickerSumm) {
         trend = '📉  -'
-        percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
       } else if (tickerSummNow > tickerSumm) {
         trend = '📈  +'
-        percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
-        sticker = '💰 +'
       } else {
         trend = '⚖️'
         percentNow = ''
@@ -75,25 +73,30 @@ bot.command('portfolio', async (ctx) => {
         '$   ➡️   ' +
         tickerSummNow.toFixed(2) +
         '$\n\n'
-      console.log(loopMessage)
       MESSAGE += loopMessage
-      console.log(MESSAGE)
     }
     let priceRub = await getPrice('RUB=X')
     let portfolioSummRub = portfolioSumm * priceRub
     let portfolioSummNowRub = portfolioSummNow * priceRub
     let profitRub = Math.abs(portfolioSummRub - portfolioSummNowRub)
     let profitUsd = Math.abs(portfolioSummNow - portfolioSumm)
+    totalPercentNow = Math.abs(100 - portfolioSummNow / (portfolioSumm / 100))
     if (portfolioSumm > portfolioSummNow) {
       sticker = '🤦‍♂️  -'
+      totalTrend = '📉  -'
     } else if (portfolioSumm < portfolioSummNow) {
       sticker = '💰  +'
+      totalTrend = '📈  +'
     } else {
       sticker = '⚖️  '
+      totalTrend = '⚖️'
     }
     MESSAGE =
       MESSAGE +
-      '💼 *Весь портфель:*\n' +
+      '💼 *Весь портфель:*  ' +
+      totalTrend +
+      totalPercentNow.toFixed(2) +
+      '%\n' +
       portfolioSumm.toFixed(2) +
       '$   ➡️   ' +
       portfolioSummNow.toFixed(2) +
