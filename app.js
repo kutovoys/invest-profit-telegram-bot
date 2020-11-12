@@ -34,6 +34,7 @@ bot.command('portfolio', async (ctx) => {
   let dbData = await db
     .collection(String(ctx.from.id))
     .find({}, { projection: { _id: 0, name: 1, full_count: 1, full_price: 1 } })
+    .sort({ name: 1 })
     .toArray()
   if (dbData.length === 0) {
     ctx.reply('Ваш портфель пуст.')
@@ -124,7 +125,7 @@ bot.command('buy', async (ctx) => {
   let ticker = buyMessage[1]
   let count = Number(buyMessage[2])
   let price = Number(buyMessage[3])
-  if (buyMessage[4] != undefined) {
+  if (buyMessage[4] !== undefined) {
     transactionDate = buyMessage[4]
   } else {
     transactionDate = new Date().toLocaleDateString('ru')
