@@ -1,4 +1,5 @@
 {
   "token": "Bot Token",
-  "mongoUri": "mongoDB connection URL"
+  "mongoUri": "mongoDB connection URL",
+  "apikey": "API Key"
 }
