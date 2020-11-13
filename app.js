@@ -34,18 +34,28 @@ bot.command('portfolio', async (ctx) => {
   let dbData = await db
     .collection(String(ctx.from.id))
     .find({}, { projection: { _id: 0, name: 1, full_count: 1, full_price: 1 } })
+    .sort({ name: 1 })
     .toArray()
+  let tickerArray = await db
+    .collection(String(ctx.from.id))
+    .find({}, { projection: { _id: 0, name: 1 } })
+    .sort({ name: 1 })
+    .toArray()
+  tickerArray = tickerArray.map((a) => a.name)
+
   if (dbData.length === 0) {
     ctx.reply('Ваш портфель пуст.')
   } else {
     let MESSAGE = '*Ваш портфель:*\n\n'
     let portfolioSumm = 0
     let portfolioSummNow = 0
+    let tickersPrice = await getBatchPrice(tickerArray)
+    let priceRub = await getPrice('RUB=X')
     for (let index in dbData) {
       let ticker = dbData[index].name
       let tickerCount = dbData[index].full_count
       let tickerSumm = dbData[index].full_price
-      let tickerPrice = await getPrice(ticker)
+      let tickerPrice = tickersPrice[index].price
       let tickerSummNow = tickerCount * tickerPrice
       portfolioSumm += tickerSumm
       portfolioSummNow += tickerSummNow
@@ -60,22 +70,11 @@ bot.command('portfolio', async (ctx) => {
         percentNow = ''
       }
 
-      let loopMessage =
-        '*' +
-        ticker +
-        '*   (' +
-        tickerCount +
-        ')   ' +
-        trend +
-        percentNow.toFixed(2) +
-        '%\n' +
-        tickerSumm.toFixed(2) +
-        '$   ➡️   ' +
-        tickerSummNow.toFixed(2) +
-        '$\n\n'
+      let loopMessage = `*${ticker}*   (${tickerCount})   ${trend}${percentNow.toFixed(
+        2
+      )}%\n${tickerSumm.toFixed(2)}$   ➡️   ${tickerSummNow.toFixed(2)}$\n\n`
       MESSAGE += loopMessage
     }
-    let priceRub = await getPrice('RUB=X')
     let portfolioSummRub = portfolioSumm * priceRub
     let portfolioSummNowRub = portfolioSummNow * priceRub
     let profitRub = Math.abs(portfolioSummRub - portfolioSummNowRub)
@@ -93,24 +92,15 @@ bot.command('portfolio', async (ctx) => {
     }
     MESSAGE =
       MESSAGE +
-      '💼 *Весь портфель:*  ' +
-      totalTrend +
-      totalPercentNow.toFixed(2) +
-      '%\n' +
-      portfolioSumm.toFixed(2) +
-      '$   ➡️   ' +
-      portfolioSummNow.toFixed(2) +
-      '$   ' +
-      sticker +
-      profitUsd.toFixed(2) +
-      '$\n' +
-      portfolioSummRub.toFixed(0) +
-      '₽   ➡️   ' +
-      portfolioSummNowRub.toFixed(0) +
-      '₽   ' +
-      sticker +
-      profitRub.toFixed(0) +
-      '₽\n'
+      `💼 *Весь портфель:*  ${totalTrend}${totalPercentNow.toFixed(
+        2
+      )}%\n${portfolioSumm.toFixed(2)}$   ➡️   ${portfolioSummNow.toFixed(
+        2
+      )}$   ${sticker}${profitUsd.toFixed(2)}$\n${portfolioSummRub.toFixed(
+        0
+      )}₽   ➡️   ${portfolioSummNowRub.toFixed(
+        0
+      )}₽   ${sticker}${profitRub.toFixed(0)}₽\n`
     console.log(MESSAGE)
     return ctx.reply(
       MESSAGE,
@@ -235,5 +225,22 @@ async function getPrice(ID) {
     return value
   } catch (e) {
     console.log('Ошибка в getPrice')
+  }
+}
+
+async function getBatchPrice(ID) {
+  const url = `https://financialmodelingprep.com/api/v3/quote/${ID.toString()}?apikey=${config.get(
+    'apikey'
+  )}`
+  try {
+    const response = await fetch(url)
+    const data = await response.json()
+    let obj = []
+    for (let index in data) {
+      obj.push({ name: data[index].symbol, price: data[index].price })
+    }
+    return obj
+  } catch (e) {
+    console.log('Ошибка в getBatchPrice', e)
   }
 }
