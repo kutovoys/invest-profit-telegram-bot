@@ -5,7 +5,8 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
-    "server": "nodemon app.js"
+    "server": "nodemon app.js",
+    "v2": "nodemon app_v2.js"
   },
   "author": "Sergey Kutovoy <kutovoy.s@gmail.com>",
   "license": "ISC",
