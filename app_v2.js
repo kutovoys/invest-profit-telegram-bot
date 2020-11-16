@@ -51,6 +51,7 @@ mongo.connect(
     db = client.db('tgbot_test')
     bot.launch()
     console.log('Bot started...')
+
     // addToPortfolio(15043721, 'stonks', 'buy', 'VTI', 100, 170, '15.11.2020')
   }
 )
@@ -114,7 +115,6 @@ bot.action('stonksSell', async (ctx) => {
   })
   ctx.scene.enter('getTicker')
 })
-
 bot.action('cryptoBuy', async (ctx) => {
   // await ctx.answerCbQuery()
   ctx.session.market = 'crypto'
@@ -163,10 +163,15 @@ getTicker.on('text', async (ctx) => {
       'Вы уже вернулись в самое начало. Введите, пожалуйста, тикер.'
     )
   }
-  checkTicker = await getPrice(ctx.message.text)
+  if (ctx.session.market === 'stonks') {
+    checkTicker = await getPrice(ctx.message.text)
+  } else {
+    checkTicker = await getCryptoPrice(ctx.message.text)
+  }
   if (checkTicker === undefined) {
     return ctx.reply('Не могу найти данный тикер. Проверьте написание.')
   }
+
   ctx.session.ticker = ctx.message.text
   ctx.reply(
     'Введите количество' +
@@ -195,26 +200,63 @@ getCount.hears('◀️ Назад', async (ctx) => {
   ctx.scene.enter('getTicker')
 })
 
+getCount.hears(['❌ Стереть все'], async (ctx) => {
+  ctx.reply('Начнем заново.\nВведите тикер', {
+    reply_markup: { remove_keyboard: true },
+  })
+  await ctx.scene.leave('getCount')
+  ctx.scene.enter('getTicker')
+})
+
 getCount.on('text', async (ctx) => {
   checkCount = parseInt(ctx.message.text)
   if (isNaN(checkCount)) {
     return ctx.reply('Пожалуйста введите число.')
   }
-  console.log(checkCount)
-  ctx.session.count = ctx.message.text
-  ctx.reply(
-    'Введите цену покупки/продажи' +
-      `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
-    {
-      reply_markup: {
-        keyboard: [['◀️ Назад', '❌ Стереть все']],
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      },
-    }
-  )
-  await ctx.scene.leave('getCount')
-  ctx.scene.enter('getTickerPrice')
+  if (
+    ctx.session.operation === 'sell' &&
+    (await countTickerForSell(
+      ctx.from.id,
+      ctx.session.market,
+      ctx.session.ticker
+    )) === 0
+  ) {
+    return ctx.reply(
+      'Вы не можете продать тикер, которого у вас нет.\n Вернитесь назад и введите тикер: который есть в вашем портфеле.'
+    )
+  } else if (
+    ctx.session.operation === 'sell' &&
+    (await countTickerForSell(
+      ctx.from.id,
+      ctx.session.market,
+      ctx.session.ticker
+    )) < parseInt(ctx.message.text)
+  ) {
+    return ctx.reply(
+      `Вы пытаетесь продать ${ctx.message.text} позиций тикера ${
+        ctx.session.ticker
+      }, когда у вас есть только ${await countTickerForSell(
+        ctx.from.id,
+        ctx.session.market,
+        ctx.session.ticker
+      )} позиций.\nВведите снова количество`
+    )
+  } else {
+    ctx.session.count = parseInt(ctx.message.text)
+    ctx.reply(
+      'Введите цену покупки/продажи' +
+        `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
+      {
+        reply_markup: {
+          keyboard: [['◀️ Назад', '❌ Стереть все']],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      }
+    )
+    await ctx.scene.leave('getCount')
+    ctx.scene.enter('getTickerPrice')
+  }
 })
 
 getTickerPrice.hears('◀️ Назад', async (ctx) => {
@@ -377,12 +419,10 @@ async function getStonks(chatId, currency = '$') {
       { user: chatId.toString() },
       { projection: { _id: 0, tickers: 1 } }
     )
-  console.log(dbData)
   if (dbData === null) {
     return (MESSAGE = 'Ваш портфель пуст.')
   } else {
     dbData = dbData.tickers.sort(compare)
-    console.log(dbData)
     tickerArray = dbData.map((a) => a.name)
     let MESSAGE = '*Ваш портфель:*\n\n'
     let portfolioSumm = 0
@@ -490,7 +530,6 @@ async function getCryptoPrice(ID, currency) {
     for (let index in data) {
       obj.push({ name: data[index].symbol, price: data[index].price })
     }
-    console.log(obj)
     return obj
   } catch (e) {
     console.log('Ошибка в getCryptoPrice', e)
@@ -507,13 +546,6 @@ async function addToPortfolio(
   date
 ) {
   let tickerSumm = count * price
-  // if (market === 'stonks') {
-  //   nowPrice = await getPrice(ticker)
-  // } else if (market === 'crypto') {
-  //   nowPrice = getCryptoPrice(ticker)
-  // } else {
-  //   console.log('Something wrong...')
-  // }
   let dbData = await db.collection(market).findOne({ user: chatId.toString() })
   if (dbData === null) {
     await db.collection(market).insertOne({
@@ -531,27 +563,69 @@ async function addToPortfolio(
     })
   } else {
     tickerArray = dbData.tickers.map((a) => a.name)
-    console.log(tickerArray)
     id = dbData._id
     if (tickerArray.includes(ticker, 0)) {
-      newValues = {
-        $inc: {
-          'tickers.$.full_count': count,
-          'tickers.$.full_price': tickerSumm,
-        },
-        $push: {
-          transactions: {
-            operation: operation,
-            date: date,
-            ticker_name: ticker,
-            trans_count: count,
-            trans_price: price,
+      if (operation === 'sell') {
+        newValues = {
+          $inc: {
+            'tickers.$.full_count': -count,
+            'tickers.$.full_price': -tickerSumm,
           },
-        },
+          $push: {
+            transactions: {
+              operation: operation,
+              date: date,
+              ticker_name: ticker,
+              trans_count: count,
+              trans_price: price,
+            },
+          },
+        }
+
+        await db
+          .collection(market)
+          .updateOne({ _id: id, 'tickers.name': ticker }, newValues)
+
+        checkData = await db
+          .collection(market)
+          .findOne(
+            { user: chatId.toString() },
+            { projection: { _id: 0, tickers: 1 } }
+          )
+        for (let index in checkData.tickers) {
+          if (
+            checkData.tickers[index].name === ticker &&
+            checkData.tickers[index].full_count === 0
+          ) {
+            await db
+              .collection(market)
+              .updateOne(
+                { _id: id },
+                { $pull: { tickers: { name: ticker } } },
+                false
+              )
+          }
+        }
+      } else {
+        newValues = {
+          $inc: {
+            'tickers.$.full_count': count,
+            'tickers.$.full_price': tickerSumm,
+          },
+          $push: {
+            transactions: {
+              operation: operation,
+              date: date,
+              ticker_name: ticker,
+              trans_count: count,
+              trans_price: price,
+            },
+          },
+        }
+        await db
+          .collection(market)
+          .updateOne({ _id: id, 'tickers.name': ticker }, newValues)
       }
-      await db
-        .collection(market)
-        .updateOne({ _id: id, 'tickers.name': ticker }, newValues)
     } else {
       newValues = {
         $push: {
@@ -571,5 +645,26 @@ async function addToPortfolio(
       }
       await db.collection(market).updateOne({ _id: id }, newValues)
     }
+  }
+}
+
+async function countTickerForSell(chatId, market, ticker) {
+  let dbData = await db
+    .collection(market)
+    .findOne(
+      { user: chatId.toString() },
+      { projection: { _id: 0, tickers: 1 } }
+    )
+  if (dbData === null) {
+    return 0
+  } else {
+    for (let index in dbData.tickers) {
+      if (dbData.tickers[index].name === ticker) {
+        tickercount = dbData.tickers[index].full_count
+      } else {
+        tickercount = 0
+      }
+    }
+    return tickercount
   }
 }
