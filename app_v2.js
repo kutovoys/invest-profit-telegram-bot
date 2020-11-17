@@ -8,6 +8,7 @@ const mongo = require('mongodb').MongoClient
 const config = require('config')
 const fetch = require('node-fetch')
 const Markup = require('telegraf/markup')
+const { get } = require('config')
 const { leave } = Stage
 const bot = new Telegraf(config.get('token'))
 const stage = new Stage()
@@ -27,15 +28,15 @@ bot.use(session())
 bot.use(stage.middleware())
 
 const mainMenu = [['/stonks', '/crypto'], ['/all']]
-const inlineStonks = Markup.inlineKeyboard([
-  Markup.callbackButton('$', 'stonksDollar'),
+let inlineStonks = Markup.inlineKeyboard([
+  // Markup.callbackButton('$', 'stonksDollar'),
   Markup.callbackButton('₽', 'stonksRuble'),
   Markup.callbackButton('Buy', 'stonksBuy'),
   Markup.callbackButton('Sell', 'stonksSell'),
 ])
 const inlineCrypto = Markup.inlineKeyboard([
   Markup.callbackButton('$', 'cryptoDollar'),
-  Markup.callbackButton('₽', 'cryptoRuble'),
+  // Markup.callbackButton('₽', 'cryptoRuble'),
   Markup.callbackButton('Buy', 'cryptoBuy'),
   Markup.callbackButton('Sell', 'cryptoSell'),
 ])
@@ -65,7 +66,26 @@ bot.start((ctx) => {
 })
 
 bot.command('stonks', async (ctx) => {
-  ctx.reply(await getStonks(ctx.from.id), Extra.markdown().markup(inlineStonks))
+  if ((await getStonks(ctx.from.id)) === 0) {
+    inlineStonks = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      // Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Buy', 'stonksBuy'),
+      // Markup.callbackButton('Sell', 'stonksSell'),
+    ])
+    ctx.reply('Ваш портфель пуст', Extra.markup(inlineStonks))
+  } else {
+    inlineStonks = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Buy', 'stonksBuy'),
+      Markup.callbackButton('Sell', 'stonksSell'),
+    ])
+    ctx.reply(
+      await getStonks(ctx.from.id),
+      Extra.markdown().markup(inlineStonks)
+    )
+  }
 })
 
 bot.command('crypto', async (ctx) => {
@@ -77,6 +97,11 @@ bot.command('crypto', async (ctx) => {
 
 bot.action('stonksDollar', async (ctx) => {
   // await ctx.answerCbQuery()
+  inlineStonks = Markup.inlineKeyboard([
+    Markup.callbackButton('₽', 'stonksRuble'),
+    Markup.callbackButton('Buy', 'stonksBuy'),
+    Markup.callbackButton('Sell', 'stonksSell'),
+  ])
   await ctx.editMessageText(
     await getStonks(ctx.from.id, '$'),
     Extra.markdown().markup(inlineStonks)
@@ -84,6 +109,11 @@ bot.action('stonksDollar', async (ctx) => {
 })
 bot.action('stonksRuble', async (ctx) => {
   // await ctx.answerCbQuery()
+  inlineStonks = Markup.inlineKeyboard([
+    Markup.callbackButton('$', 'stonksDollar'),
+    Markup.callbackButton('Buy', 'stonksBuy'),
+    Markup.callbackButton('Sell', 'stonksSell'),
+  ])
   await ctx.editMessageText(
     await getStonks(ctx.from.id, '₽'),
     Extra.markdown().markup(inlineStonks)
@@ -172,7 +202,7 @@ getTicker.on('text', async (ctx) => {
     return ctx.reply('Не могу найти данный тикер. Проверьте написание.')
   }
 
-  ctx.session.ticker = ctx.message.text
+  ctx.session.ticker = ctx.message.text.toUpperCase()
   ctx.reply(
     'Введите количество' +
       `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}`,
@@ -202,7 +232,11 @@ getCount.hears('◀️ Назад', async (ctx) => {
 
 getCount.hears(['❌ Стереть все'], async (ctx) => {
   ctx.reply('Начнем заново.\nВведите тикер', {
-    reply_markup: { remove_keyboard: true },
+    reply_markup: {
+      keyboard: [['️⬅️ На главную']],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
   })
   await ctx.scene.leave('getCount')
   ctx.scene.enter('getTicker')
@@ -210,7 +244,11 @@ getCount.hears(['❌ Стереть все'], async (ctx) => {
 
 getCount.on('text', async (ctx) => {
   checkCount = parseInt(ctx.message.text)
-  if (isNaN(checkCount)) {
+  if (
+    !Number.isInteger(checkCount) ||
+    checkCount <= 0 ||
+    checkCount > 999999999999
+  ) {
     return ctx.reply('Пожалуйста введите число.')
   }
   if (
@@ -242,9 +280,9 @@ getCount.on('text', async (ctx) => {
       )} позиций.\nВведите снова количество`
     )
   } else {
-    ctx.session.count = parseInt(ctx.message.text)
+    ctx.session.count = checkCount
     ctx.reply(
-      'Введите цену покупки/продажи' +
+      'Введите цену покупки/продажи, $' +
         `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
       {
         reply_markup: {
@@ -277,7 +315,11 @@ getTickerPrice.hears('◀️ Назад', async (ctx) => {
 
 getTickerPrice.hears(['❌ Стереть все'], async (ctx) => {
   ctx.reply('Начнем заново.\nВведите тикер', {
-    reply_markup: { remove_keyboard: true },
+    reply_markup: {
+      keyboard: [['️⬅️ На главную']],
+      resize_keyboard: true,
+      one_time_keyboard: true,
+    },
   })
   await ctx.scene.leave('getTickerPrice')
   ctx.scene.enter('getTicker')
@@ -285,29 +327,34 @@ getTickerPrice.hears(['❌ Стереть все'], async (ctx) => {
 
 getTickerPrice.on('text', async (ctx) => {
   checkPrice = parseInt(ctx.message.text)
-  if (isNaN(checkPrice)) {
+  if (
+    !Number.isInteger(checkPrice) ||
+    checkPrice <= 0 ||
+    checkPrice > 999999999999
+  ) {
     return ctx.reply('Пожалуйста введите число.')
+  } else {
+    ctx.session.price = checkPrice
+    keyboardDate = new Date().toLocaleDateString('ru')
+    ctx.reply(
+      'Введите дату операции в формате ДД.ММ.ГГГГ' +
+        `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}\nЦена: ${ctx.session.price}$`,
+      {
+        reply_markup: {
+          keyboard: [[keyboardDate], ['◀️ Назад', '❌ Стереть все']],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      }
+    )
+    await ctx.scene.leave('getTickerPrice')
+    ctx.scene.enter('getDate')
   }
-  ctx.session.price = ctx.message.text
-  keyboardDate = new Date().toLocaleDateString('ru')
-  ctx.reply(
-    'Введите дату операции в формате ДД.ММ.ГГГГ' +
-      `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}\nЦена: ${ctx.session.price}$`,
-    {
-      reply_markup: {
-        keyboard: [[keyboardDate], ['◀️ Назад', '❌ Стереть все']],
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      },
-    }
-  )
-  await ctx.scene.leave('getTickerPrice')
-  ctx.scene.enter('getDate')
 })
 
 getDate.hears('◀️ Назад', async (ctx) => {
   ctx.reply(
-    'Введите цену покупки/продажи' +
+    'Введите цену покупки/продажи, $' +
       `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
     {
       reply_markup: {
@@ -330,6 +377,9 @@ getDate.hears(['❌ Стереть все'], async (ctx) => {
 })
 
 getDate.on('text', async (ctx) => {
+  if (!checkDate(ctx.message.text)) {
+    return ctx.reply('Дата введена не верно. Введите дату в формате ДД.ММ.ГГГГ')
+  }
   ctx.session.date = ctx.message.text
   ctx.reply(
     '❗️ Проверьте все данные и нажмите "Все верно", если они корректны: ' +
@@ -400,6 +450,23 @@ check.hears('️✅ Все верно', (ctx) => {
   ctx.session = null
 })
 
+// Функция проверки даты
+function checkDate(value) {
+  let arrD = value.split('.')
+  arrD[1] -= 1
+  let d = new Date(arrD[2], arrD[1], arrD[0])
+  if (
+    d.getFullYear() == arrD[2] &&
+    d.getMonth() == arrD[1] &&
+    d.getDate() == arrD[0]
+  ) {
+    return true
+  } else {
+    console.log('Введена некорректная дата!')
+    return false
+  }
+}
+
 // Функция сортировки массива
 function compare(a, b) {
   if (a.name < b.name) {
@@ -419,8 +486,10 @@ async function getStonks(chatId, currency = '$') {
       { user: chatId.toString() },
       { projection: { _id: 0, tickers: 1 } }
     )
-  if (dbData === null) {
-    return (MESSAGE = 'Ваш портфель пуст.')
+  console.log(dbData)
+  // console.log(dbData.tickers)
+  if (dbData === null || dbData.tickers.length <= 0) {
+    return 0
   } else {
     dbData = dbData.tickers.sort(compare)
     tickerArray = dbData.map((a) => a.name)
