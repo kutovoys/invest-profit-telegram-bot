@@ -8,8 +8,8 @@ const mongo = require('mongodb').MongoClient
 const config = require('config')
 const fetch = require('node-fetch')
 const Markup = require('telegraf/markup')
-const { get } = require('config')
 const { leave } = Stage
+const func = require('./functions')
 const bot = new Telegraf(config.get('token'))
 const stage = new Stage()
 
@@ -34,7 +34,7 @@ let inlineStonks = Markup.inlineKeyboard([
   Markup.callbackButton('Buy', 'stonksBuy'),
   Markup.callbackButton('Sell', 'stonksSell'),
 ])
-const inlineCrypto = Markup.inlineKeyboard([
+let inlineCrypto = Markup.inlineKeyboard([
   Markup.callbackButton('$', 'cryptoDollar'),
   // Markup.callbackButton('₽', 'cryptoRuble'),
   Markup.callbackButton('Buy', 'cryptoBuy'),
@@ -89,10 +89,26 @@ bot.command('stonks', async (ctx) => {
 })
 
 bot.command('crypto', async (ctx) => {
-  ctx.reply(
-    'Ваша крипта: Тут в будущем будет ваш портфель',
-    Extra.markdown().markup(inlineCrypto)
-  )
+  if ((await getCrypto(ctx.from.id, 'crypto')) === 0) {
+    inlineCrypto = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      // Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Buy', 'cryptoBuy'),
+      // Markup.callbackButton('Sell', 'stonksSell'),
+    ])
+    ctx.reply('Ваш портфель пуст', Extra.markup(inlineCrypto))
+  } else {
+    inlineCrypto = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      Markup.callbackButton('₽', 'cryptoRuble'),
+      Markup.callbackButton('Buy', 'cryptoBuy'),
+      Markup.callbackButton('Sell', 'cryptoSell'),
+    ])
+    ctx.reply(
+      await getCrypto(ctx.from.id, 'crypto', '$'),
+      Extra.markdown().markup(inlineCrypto)
+    )
+  }
 })
 
 bot.action('stonksDollar', async (ctx) => {
@@ -145,6 +161,7 @@ bot.action('stonksSell', async (ctx) => {
   })
   ctx.scene.enter('getTicker')
 })
+
 bot.action('cryptoBuy', async (ctx) => {
   // await ctx.answerCbQuery()
   ctx.session.market = 'crypto'
@@ -171,6 +188,30 @@ bot.action('cryptoSell', async (ctx) => {
   })
   ctx.scene.enter('getTicker')
 })
+bot.action('cryptoDollar', async (ctx) => {
+  // await ctx.answerCbQuery()
+  inlineStonks = Markup.inlineKeyboard([
+    Markup.callbackButton('₽', 'cryptoRuble'),
+    Markup.callbackButton('Buy', 'cryptoBuy'),
+    Markup.callbackButton('Sell', 'cryptoSell'),
+  ])
+  await ctx.editMessageText(
+    await getCrypto(ctx.from.id, 'crypto', '$'),
+    Extra.markdown().markup(inlineStonks)
+  )
+})
+bot.action('cryptoRuble', async (ctx) => {
+  // await ctx.answerCbQuery()
+  inlineStonks = Markup.inlineKeyboard([
+    Markup.callbackButton('$', 'cryptoDollar'),
+    Markup.callbackButton('Buy', 'cryptoBuy'),
+    Markup.callbackButton('Sell', 'cryptoSell'),
+  ])
+  await ctx.editMessageText(
+    await getCrypto(ctx.from.id, 'crypto', '₽'),
+    Extra.markdown().markup(inlineStonks)
+  )
+})
 
 bot.hears('️⬅️ На главную', (ctx) => {
   return ctx.reply(
@@ -193,29 +234,31 @@ getTicker.on('text', async (ctx) => {
       'Вы уже вернулись в самое начало. Введите, пожалуйста, тикер.'
     )
   }
-  if (ctx.session.market === 'stonks') {
-    checkTicker = await getPrice(ctx.message.text)
+  // console.log(await func.checkCryptoTicker(ctx.message.text))
+  if (
+    await func.checkMessage(
+      ctx.message.text.toUpperCase(),
+      'ticker',
+      ctx.session.market
+    )
+  ) {
+    ctx.session.ticker = ctx.message.text.toUpperCase()
+    ctx.reply(
+      'Введите количество' +
+        `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}`,
+      {
+        reply_markup: {
+          keyboard: [['◀️ Назад']],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+      }
+    )
+    await ctx.scene.leave('getTicker')
+    ctx.scene.enter('getCount')
   } else {
-    checkTicker = await getCryptoPrice(ctx.message.text)
-  }
-  if (checkTicker === undefined) {
     return ctx.reply('Не могу найти данный тикер. Проверьте написание.')
   }
-
-  ctx.session.ticker = ctx.message.text.toUpperCase()
-  ctx.reply(
-    'Введите количество' +
-      `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}`,
-    {
-      reply_markup: {
-        keyboard: [['◀️ Назад']],
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      },
-    }
-  )
-  await ctx.scene.leave('getTicker')
-  ctx.scene.enter('getCount')
 })
 
 getCount.hears('◀️ Назад', async (ctx) => {
@@ -243,57 +286,56 @@ getCount.hears(['❌ Стереть все'], async (ctx) => {
 })
 
 getCount.on('text', async (ctx) => {
-  checkCount = parseInt(ctx.message.text)
   if (
-    !Number.isInteger(checkCount) ||
-    checkCount <= 0 ||
-    checkCount > 999999999999
+    (await func.checkMessage(ctx.message.text, 'count', ctx.session.market)) &&
+    ctx.message.text !== '0'
   ) {
-    return ctx.reply('Пожалуйста введите число.')
-  }
-  if (
-    ctx.session.operation === 'sell' &&
-    (await countTickerForSell(
-      ctx.from.id,
-      ctx.session.market,
-      ctx.session.ticker
-    )) === 0
-  ) {
-    return ctx.reply(
-      'Вы не можете продать тикер, которого у вас нет.\n Вернитесь назад и введите тикер: который есть в вашем портфеле.'
-    )
-  } else if (
-    ctx.session.operation === 'sell' &&
-    (await countTickerForSell(
-      ctx.from.id,
-      ctx.session.market,
-      ctx.session.ticker
-    )) < parseInt(ctx.message.text)
-  ) {
-    return ctx.reply(
-      `Вы пытаетесь продать ${ctx.message.text} позиций тикера ${
-        ctx.session.ticker
-      }, когда у вас есть только ${await countTickerForSell(
+    if (
+      ctx.session.operation === 'sell' &&
+      (await countTickerForSell(
         ctx.from.id,
         ctx.session.market,
         ctx.session.ticker
-      )} позиций.\nВведите снова количество`
-    )
+      )) === 0
+    ) {
+      return ctx.reply(
+        'Вы не можете продать тикер, которого у вас нет.\n Вернитесь назад и введите тикер: который есть в вашем портфеле.'
+      )
+    } else if (
+      ctx.session.operation === 'sell' &&
+      (await countTickerForSell(
+        ctx.from.id,
+        ctx.session.market,
+        ctx.session.ticker
+      )) < parseFloat(ctx.message.text)
+    ) {
+      return ctx.reply(
+        `Вы пытаетесь продать ${ctx.message.text} позиций тикера ${
+          ctx.session.ticker
+        }, когда у вас есть только ${await countTickerForSell(
+          ctx.from.id,
+          ctx.session.market,
+          ctx.session.ticker
+        )} позиций.\nВведите снова количество`
+      )
+    } else {
+      ctx.session.count = parseFloat(ctx.message.text)
+      ctx.reply(
+        'Введите цену покупки/продажи, $' +
+          `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
+        {
+          reply_markup: {
+            keyboard: [['◀️ Назад', '❌ Стереть все']],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          },
+        }
+      )
+      await ctx.scene.leave('getCount')
+      ctx.scene.enter('getTickerPrice')
+    }
   } else {
-    ctx.session.count = checkCount
-    ctx.reply(
-      'Введите цену покупки/продажи, $' +
-        `\n\nУже введенные данные:\nТикер: ${ctx.session.ticker}\nКоличество: ${ctx.session.count}`,
-      {
-        reply_markup: {
-          keyboard: [['◀️ Назад', '❌ Стереть все']],
-          resize_keyboard: true,
-          one_time_keyboard: true,
-        },
-      }
-    )
-    await ctx.scene.leave('getCount')
-    ctx.scene.enter('getTickerPrice')
+    return ctx.reply('Введите верное количество')
   }
 })
 
@@ -326,15 +368,11 @@ getTickerPrice.hears(['❌ Стереть все'], async (ctx) => {
 })
 
 getTickerPrice.on('text', async (ctx) => {
-  checkPrice = parseInt(ctx.message.text)
   if (
-    !Number.isInteger(checkPrice) ||
-    checkPrice <= 0 ||
-    checkPrice > 999999999999
+    (await func.checkMessage(ctx.message.text, 'price', ctx.session.market)) &&
+    ctx.message.text !== '0'
   ) {
-    return ctx.reply('Пожалуйста введите число.')
-  } else {
-    ctx.session.price = checkPrice
+    ctx.session.price = parseFloat(ctx.message.text)
     keyboardDate = new Date().toLocaleDateString('ru')
     ctx.reply(
       'Введите дату операции в формате ДД.ММ.ГГГГ' +
@@ -349,6 +387,8 @@ getTickerPrice.on('text', async (ctx) => {
     )
     await ctx.scene.leave('getTickerPrice')
     ctx.scene.enter('getDate')
+  } else {
+    return ctx.reply('Введите верную цену')
   }
 })
 
@@ -377,24 +417,25 @@ getDate.hears(['❌ Стереть все'], async (ctx) => {
 })
 
 getDate.on('text', async (ctx) => {
-  if (!checkDate(ctx.message.text)) {
+  if (await func.checkMessage(ctx.message.text, 'date', ctx.session.market)) {
+    ctx.session.date = ctx.message.text
+    ctx.reply(
+      '❗️ Проверьте все данные и нажмите "Все верно", если они корректны: ' +
+        `\n\nТикер: *${ctx.session.ticker}*\nКоличество: *${ctx.session.count}*\nЦена: *${ctx.session.price}*$\nДата: *${ctx.session.date}*`,
+      {
+        reply_markup: {
+          keyboard: [['️✅ Все верно'], ['◀️ Назад', '❌ Стереть все']],
+          resize_keyboard: true,
+          one_time_keyboard: true,
+        },
+        parse_mode: 'markdown',
+      }
+    )
+    await ctx.scene.leave('getDate')
+    ctx.scene.enter('check')
+  } else {
     return ctx.reply('Дата введена не верно. Введите дату в формате ДД.ММ.ГГГГ')
   }
-  ctx.session.date = ctx.message.text
-  ctx.reply(
-    '❗️ Проверьте все данные и нажмите "Все верно", если они корректны: ' +
-      `\n\nТикер: *${ctx.session.ticker}*\nКоличество: *${ctx.session.count}*\nЦена: *${ctx.session.price}*$\nДата: *${ctx.session.date}*`,
-    {
-      reply_markup: {
-        keyboard: [['️✅ Все верно'], ['◀️ Назад', '❌ Стереть все']],
-        resize_keyboard: true,
-        one_time_keyboard: true,
-      },
-      parse_mode: 'markdown',
-    }
-  )
-  await ctx.scene.leave('getDate')
-  ctx.scene.enter('check')
 })
 
 check.hears('◀️ Назад', async (ctx) => {
@@ -450,34 +491,6 @@ check.hears('️✅ Все верно', (ctx) => {
   ctx.session = null
 })
 
-// Функция проверки даты
-function checkDate(value) {
-  let arrD = value.split('.')
-  arrD[1] -= 1
-  let d = new Date(arrD[2], arrD[1], arrD[0])
-  if (
-    d.getFullYear() == arrD[2] &&
-    d.getMonth() == arrD[1] &&
-    d.getDate() == arrD[0]
-  ) {
-    return true
-  } else {
-    console.log('Введена некорректная дата!')
-    return false
-  }
-}
-
-// Функция сортировки массива
-function compare(a, b) {
-  if (a.name < b.name) {
-    return -1
-  }
-  if (a.name > b.name) {
-    return 1
-  }
-  return 0
-}
-
 // Функция запроса данных из БД и формирования ответа пользователю
 async function getStonks(chatId, currency = '$') {
   let dbData = await db
@@ -491,7 +504,7 @@ async function getStonks(chatId, currency = '$') {
   if (dbData === null || dbData.tickers.length <= 0) {
     return 0
   } else {
-    dbData = dbData.tickers.sort(compare)
+    dbData = dbData.tickers.sort(func.compare)
     tickerArray = dbData.map((a) => a.name)
     let MESSAGE = '*Ваш портфель:*\n\n'
     let portfolioSumm = 0
@@ -588,7 +601,7 @@ async function getBatchPrice(ID) {
 }
 
 // Функция пакетного получения цены криптовалют
-async function getCryptoPrice(ID, currency) {
+async function getCryptoPrice(ID, currency = 'USD') {
   const url = `https://api.nomics.com/v1/currencies/ticker?key=${config.get(
     'cryptoApiKey'
   )}&ids=${ID.toString()}&convert=${currency}`
@@ -735,5 +748,81 @@ async function countTickerForSell(chatId, market, ticker) {
       }
     }
     return tickercount
+  }
+}
+
+async function getCrypto(chatId, market, currency = '$') {
+  let dbData = await db
+    .collection(market)
+    .findOne(
+      { user: chatId.toString() },
+      { projection: { _id: 0, tickers: 1 } }
+    )
+  console.log(dbData)
+  // console.log(dbData.tickers)
+  if (dbData === null || dbData.tickers.length <= 0) {
+    return 0
+  } else {
+    dbData = dbData.tickers.sort(func.compare)
+    tickerArray = dbData.map((a) => a.name)
+    let MESSAGE = '*Ваш портфель:*\n\n'
+    let portfolioSumm = 0
+    let portfolioSummNow = 0
+    let tickersPrice = await getCryptoPrice(tickerArray)
+    if (currency === '₽') {
+      priceRub = await getPrice('RUB=X')
+    } else {
+      priceRub = 1
+    }
+    for (let index in dbData) {
+      let ticker = dbData[index].name
+      let tickerCount = dbData[index].full_count
+      let tickerSumm = dbData[index].full_price
+      let tickerPrice = tickersPrice[index].price
+      let tickerSummNow = tickerCount * tickerPrice
+      portfolioSumm += tickerSumm
+      portfolioSummNow += tickerSummNow
+      percentNow = Math.abs(100 - tickerSummNow / (tickerSumm / 100))
+
+      if (tickerSummNow < tickerSumm) {
+        trend = '📉  -'
+      } else if (tickerSummNow > tickerSumm) {
+        trend = '📈  +'
+      } else {
+        trend = '⚖️'
+        percentNow = ''
+      }
+
+      let loopMessage = `*${ticker}*   (${tickerCount})   ${trend}${percentNow.toFixed(
+        2
+      )}%\n${(tickerSumm * priceRub).toFixed(0)}${currency}   ➡️   ${(
+        tickerSummNow * priceRub
+      ).toFixed(0)}${currency}\n\n`
+      MESSAGE += loopMessage
+    }
+
+    let profitUsd = Math.abs(portfolioSummNow - portfolioSumm)
+    totalPercentNow = Math.abs(100 - portfolioSummNow / (portfolioSumm / 100))
+    if (portfolioSumm > portfolioSummNow) {
+      sticker = '🤦‍♂️  -'
+      totalTrend = '📉  -'
+    } else if (portfolioSumm < portfolioSummNow) {
+      sticker = '💰  +'
+      totalTrend = '📈  +'
+    } else {
+      sticker = '⚖️  '
+      totalTrend = '⚖️'
+    }
+    MESSAGE =
+      MESSAGE +
+      `💼 *Весь портфель:*  ${totalTrend}${totalPercentNow.toFixed(2)}%\n${(
+        portfolioSumm * priceRub
+      ).toFixed(0)}${currency}   ➡️   ${(portfolioSummNow * priceRub).toFixed(
+        0
+      )}${currency}   ${sticker}${(profitUsd * priceRub).toFixed(
+        0
+      )}${currency}\n`
+    console.log(MESSAGE)
+    return MESSAGE
   }
 }
