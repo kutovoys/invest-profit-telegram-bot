@@ -66,15 +66,7 @@ bot.start((ctx) => {
 })
 
 bot.command('stonks', async (ctx) => {
-  if ((await getStonks(ctx.from.id)) === 0) {
-    inlineStonks = Markup.inlineKeyboard([
-      // Markup.callbackButton('$', 'stonksDollar'),
-      // Markup.callbackButton('₽', 'stonksRuble'),
-      Markup.callbackButton('Buy', 'stonksBuy'),
-      // Markup.callbackButton('Sell', 'stonksSell'),
-    ])
-    ctx.reply('Ваш портфель пуст', Extra.markup(inlineStonks))
-  } else {
+  if (await func.checkPortfolio(ctx.from.id, 'stonks')) {
     inlineStonks = Markup.inlineKeyboard([
       // Markup.callbackButton('$', 'stonksDollar'),
       Markup.callbackButton('₽', 'stonksRuble'),
@@ -85,19 +77,19 @@ bot.command('stonks', async (ctx) => {
       await getStonks(ctx.from.id),
       Extra.markdown().markup(inlineStonks)
     )
+  } else {
+    inlineStonks = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      // Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Buy', 'stonksBuy'),
+      // Markup.callbackButton('Sell', 'stonksSell'),
+    ])
+    ctx.reply('Ваш портфель пуст', Extra.markup(inlineStonks))
   }
 })
 
 bot.command('crypto', async (ctx) => {
-  if ((await getCrypto(ctx.from.id, 'crypto')) === 0) {
-    inlineCrypto = Markup.inlineKeyboard([
-      // Markup.callbackButton('$', 'stonksDollar'),
-      // Markup.callbackButton('₽', 'stonksRuble'),
-      Markup.callbackButton('Buy', 'cryptoBuy'),
-      // Markup.callbackButton('Sell', 'stonksSell'),
-    ])
-    ctx.reply('Ваш портфель пуст', Extra.markup(inlineCrypto))
-  } else {
+  if (await func.checkPortfolio(ctx.from.id, 'crypto')) {
     inlineCrypto = Markup.inlineKeyboard([
       // Markup.callbackButton('$', 'stonksDollar'),
       Markup.callbackButton('₽', 'cryptoRuble'),
@@ -108,9 +100,19 @@ bot.command('crypto', async (ctx) => {
       await getCrypto(ctx.from.id, 'crypto', '$'),
       Extra.markdown().markup(inlineCrypto)
     )
+  } else {
+    inlineCrypto = Markup.inlineKeyboard([
+      // Markup.callbackButton('$', 'stonksDollar'),
+      // Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Buy', 'cryptoBuy'),
+      // Markup.callbackButton('Sell', 'stonksSell'),
+    ])
+    ctx.reply('Ваш портфель пуст', Extra.markup(inlineCrypto))
   }
 })
-
+bot.command('all', async (ctx) => {
+  ctx.reply(await getAll(ctx.from.id, '$'), Extra.markdown())
+})
 bot.action('stonksDollar', async (ctx) => {
   // await ctx.answerCbQuery()
   inlineStonks = Markup.inlineKeyboard([
@@ -234,7 +236,6 @@ getTicker.on('text', async (ctx) => {
       'Вы уже вернулись в самое начало. Введите, пожалуйста, тикер.'
     )
   }
-  // console.log(await func.checkCryptoTicker(ctx.message.text))
   if (
     await func.checkMessage(
       ctx.message.text.toUpperCase(),
@@ -290,33 +291,21 @@ getCount.on('text', async (ctx) => {
     (await func.checkMessage(ctx.message.text, 'count', ctx.session.market)) &&
     ctx.message.text !== '0'
   ) {
-    if (
-      ctx.session.operation === 'sell' &&
-      (await countTickerForSell(
-        ctx.from.id,
-        ctx.session.market,
-        ctx.session.ticker
-      )) === 0
-    ) {
+    countForSell = await func.countTickerForSell(
+      ctx.from.id,
+      ctx.session.market,
+      ctx.session.ticker
+    )
+    if (ctx.session.operation === 'sell' && countForSell === 0) {
       return ctx.reply(
         'Вы не можете продать тикер, которого у вас нет.\n Вернитесь назад и введите тикер: который есть в вашем портфеле.'
       )
     } else if (
       ctx.session.operation === 'sell' &&
-      (await countTickerForSell(
-        ctx.from.id,
-        ctx.session.market,
-        ctx.session.ticker
-      )) < parseFloat(ctx.message.text)
+      countForSell < parseFloat(ctx.message.text)
     ) {
       return ctx.reply(
-        `Вы пытаетесь продать ${ctx.message.text} позиций тикера ${
-          ctx.session.ticker
-        }, когда у вас есть только ${await countTickerForSell(
-          ctx.from.id,
-          ctx.session.market,
-          ctx.session.ticker
-        )} позиций.\nВведите снова количество`
+        `Вы пытаетесь продать ${ctx.message.text} позиций тикера ${ctx.session.ticker}, когда у вас есть только ${countForSell} позиций.\nВведите снова количество`
       )
     } else {
       ctx.session.count = parseFloat(ctx.message.text)
@@ -493,14 +482,13 @@ check.hears('️✅ Все верно', (ctx) => {
 
 // Функция запроса данных из БД и формирования ответа пользователю
 async function getStonks(chatId, currency = '$') {
+  console.time('getStonks')
   let dbData = await db
     .collection('stonks')
     .findOne(
       { user: chatId.toString() },
       { projection: { _id: 0, tickers: 1 } }
     )
-  console.log(dbData)
-  // console.log(dbData.tickers)
   if (dbData === null || dbData.tickers.length <= 0) {
     return 0
   } else {
@@ -509,9 +497,9 @@ async function getStonks(chatId, currency = '$') {
     let MESSAGE = '*Ваш портфель:*\n\n'
     let portfolioSumm = 0
     let portfolioSummNow = 0
-    let tickersPrice = await getBatchPrice(tickerArray)
+    let tickersPrice = await func.getStonksPrice(tickerArray)
     if (currency === '₽') {
-      priceRub = await getPrice('RUB=X')
+      priceRub = await func.getRublePrice('RUB=X')
     } else {
       priceRub = 1
     }
@@ -563,58 +551,9 @@ async function getStonks(chatId, currency = '$') {
       )}${currency}   ${sticker}${(profitUsd * priceRub).toFixed(
         0
       )}${currency}\n`
-    console.log(MESSAGE)
+    //console.log(MESSAGE)
+    console.timeEnd('getStonks')
     return MESSAGE
-  }
-}
-
-// Функция получения цены
-async function getPrice(ID) {
-  //получаем имя бумаги
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ID}?modules=price`
-  try {
-    const response = await fetch(url)
-    const json = await response.json()
-    const value = json.quoteSummary.result[0].price.regularMarketPrice.raw
-    return value
-  } catch (e) {
-    console.log('Ошибка в getPrice')
-  }
-}
-
-// Функция пакетного получения цены тикеров
-async function getBatchPrice(ID) {
-  const url = `https://financialmodelingprep.com/api/v3/quote/${ID.toString()}?apikey=${config.get(
-    'apikey'
-  )}`
-  try {
-    const response = await fetch(url)
-    const data = await response.json()
-    let obj = []
-    for (let index in data) {
-      obj.push({ name: data[index].symbol, price: data[index].price })
-    }
-    return obj
-  } catch (e) {
-    console.log('Ошибка в getBatchPrice', e)
-  }
-}
-
-// Функция пакетного получения цены криптовалют
-async function getCryptoPrice(ID, currency = 'USD') {
-  const url = `https://api.nomics.com/v1/currencies/ticker?key=${config.get(
-    'cryptoApiKey'
-  )}&ids=${ID.toString()}&convert=${currency}`
-  try {
-    const response = await fetch(url)
-    const data = await response.json()
-    let obj = []
-    for (let index in data) {
-      obj.push({ name: data[index].symbol, price: data[index].price })
-    }
-    return obj
-  } catch (e) {
-    console.log('Ошибка в getCryptoPrice', e)
   }
 }
 
@@ -730,36 +669,14 @@ async function addToPortfolio(
   }
 }
 
-async function countTickerForSell(chatId, market, ticker) {
-  let dbData = await db
-    .collection(market)
-    .findOne(
-      { user: chatId.toString() },
-      { projection: { _id: 0, tickers: 1 } }
-    )
-  if (dbData === null) {
-    return 0
-  } else {
-    for (let index in dbData.tickers) {
-      if (dbData.tickers[index].name === ticker) {
-        tickercount = dbData.tickers[index].full_count
-      } else {
-        tickercount = 0
-      }
-    }
-    return tickercount
-  }
-}
-
 async function getCrypto(chatId, market, currency = '$') {
+  console.time('getCrypto')
   let dbData = await db
     .collection(market)
     .findOne(
       { user: chatId.toString() },
       { projection: { _id: 0, tickers: 1 } }
     )
-  console.log(dbData)
-  // console.log(dbData.tickers)
   if (dbData === null || dbData.tickers.length <= 0) {
     return 0
   } else {
@@ -768,9 +685,9 @@ async function getCrypto(chatId, market, currency = '$') {
     let MESSAGE = '*Ваш портфель:*\n\n'
     let portfolioSumm = 0
     let portfolioSummNow = 0
-    let tickersPrice = await getCryptoPrice(tickerArray)
+    let tickersPrice = await func.getCryptoPrice(tickerArray)
     if (currency === '₽') {
-      priceRub = await getPrice('RUB=X')
+      priceRub = await func.getRublePrice('RUB=X')
     } else {
       priceRub = 1
     }
@@ -822,7 +739,117 @@ async function getCrypto(chatId, market, currency = '$') {
       )}${currency}   ${sticker}${(profitUsd * priceRub).toFixed(
         0
       )}${currency}\n`
-    console.log(MESSAGE)
+    //console.log(MESSAGE)
+    console.timeEnd('getCrypto')
     return MESSAGE
+  }
+}
+
+async function getAll(chatId, currency) {
+  if (
+    func.checkPortfolio(chatId, 'stonks') &&
+    func.checkPortfolio(chatId, 'crypto')
+  ) {
+    let stonksDbData = await db
+      .collection('stonks')
+      .findOne(
+        { user: chatId.toString() },
+        { projection: { _id: 0, tickers: 1 } }
+      )
+    let cryptoDbData = await db
+      .collection('crypto')
+      .findOne(
+        { user: chatId.toString() },
+        { projection: { _id: 0, tickers: 1 } }
+      )
+    stonksDbData = stonksDbData.tickers.sort(func.compare)
+    cryptoDbData = cryptoDbData.tickers.sort(func.compare)
+    stonksTickerArray = stonksDbData.map((a) => a.name)
+    cryptoTickerArray = cryptoDbData.map((a) => a.name)
+    let stonksPortfolioSumm = 0
+    let cryptoPortfolioSumm = 0
+    let stonksPortfolioSummNow = 0
+    let cryptoPortfolioSummNow = 0
+    let stonksTickersPrice = await func.getStonksPrice(stonksTickerArray)
+    let cryptoTickersPrice = await func.getCryptoPrice(cryptoTickerArray)
+    if (currency === '₽') {
+      priceRub = await func.getRublePrice('RUB=X')
+    } else {
+      priceRub = 1
+    }
+    for (let index in stonksDbData) {
+      let stonksTickerCount = stonksDbData[index].full_count
+      let stonksTickerSumm = stonksDbData[index].full_price
+      let stonksTickerPrice = stonksTickersPrice[index].price
+      let stonksTickerSummNow = stonksTickerCount * stonksTickerPrice
+      stonksPortfolioSumm += stonksTickerSumm
+      stonksPortfolioSummNow += stonksTickerSummNow
+    }
+
+    let percentStonks = Math.abs(
+      100 - stonksPortfolioSummNow / (stonksPortfolioSumm / 100)
+    )
+    if (stonksPortfolioSumm > stonksPortfolioSummNow) {
+      stonksTrend = '📉  -'
+    } else if (stonksPortfolioSumm < stonksPortfolioSummNow) {
+      stonksTrend = '📈  +'
+    } else {
+      stonksTrend = '⚖️'
+    }
+
+    for (let index in cryptoDbData) {
+      let cryptoTickerCount = cryptoDbData[index].full_count
+      let cryptoTickerSumm = cryptoDbData[index].full_price
+      let cryptoTickerPrice = cryptoTickersPrice[index].price
+      let cryptoTickerSummNow = cryptoTickerCount * cryptoTickerPrice
+      cryptoPortfolioSumm += cryptoTickerSumm
+      cryptoPortfolioSummNow += cryptoTickerSummNow
+    }
+
+    let percentCrypto = Math.abs(
+      100 - cryptoPortfolioSummNow / (cryptoPortfolioSumm / 100)
+    )
+    if (cryptoPortfolioSumm > cryptoPortfolioSummNow) {
+      cryptoTrend = '📉  -'
+    } else if (cryptoPortfolioSumm < cryptoPortfolioSummNow) {
+      cryptoTrend = '📈  +'
+    } else {
+      cryptoTrend = '⚖️'
+    }
+    allPortfolioSumm = stonksPortfolioSumm + cryptoPortfolioSumm
+    allPortfolioSummNow = stonksPortfolioSummNow + cryptoPortfolioSummNow
+    percentAll = Math.abs(100 - allPortfolioSummNow / (allPortfolioSumm / 100))
+    profitAll = Math.abs(allPortfolioSummNow - allPortfolioSumm)
+    if (allPortfolioSumm > allPortfolioSummNow) {
+      alllSticker = '🤦‍♂️  -'
+      totalTrend = '📉  -'
+    } else if (allPortfolioSumm < allPortfolioSummNow) {
+      alllSticker = '💰  +'
+      totalTrend = '📈  +'
+    } else {
+      alllSticker = '⚖️  '
+      totalTrend = '⚖️'
+    }
+    MESSAGE = `*Ваши портфели:*
+    
+*STONKS:*   ${stonksTrend}${percentStonks.toFixed(2)}%
+${stonksPortfolioSumm.toFixed(0)}$   ➡️   ${stonksPortfolioSummNow.toFixed(0)}$
+
+*CRYPTO:*   ${cryptoTrend}${percentCrypto.toFixed(2)}%
+${cryptoPortfolioSumm.toFixed(0)}$   ➡️   ${cryptoPortfolioSummNow.toFixed(0)}$
+
+💼 Сумма портфелей:  ${totalTrend}${percentAll.toFixed(2)}%
+${allPortfolioSumm.toFixed(0)}$   ➡️   ${allPortfolioSummNow.toFixed(
+      0
+    )}$   ${alllSticker}${profitAll.toFixed(0)}$`
+    return MESSAGE
+  } else if (func.checkPortfolio(chatId, 'stonks')) {
+  } else if (func.checkPortfolio(chatId, 'crypto')) {
+  } else {
+    inlineAll = Markup.inlineKeyboard([
+      Markup.callbackButton('Buy Stonks', 'stonksBuy'),
+      Markup.callbackButton('Buy Crypto', 'cryptoBuy'),
+    ])
+    return ctx.reply('Все ваши портфели пусты', Extra.markup(inlineAll))
   }
 }

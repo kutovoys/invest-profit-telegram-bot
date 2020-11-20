@@ -12,6 +12,17 @@ const { leave } = Stage
 const bot = new Telegraf(config.get('token'))
 const stage = new Stage()
 
+mongo.connect(
+  config.get('mongoUri'),
+  { useNewUrlParser: true, useUnifiedTopology: true },
+  (err, client) => {
+    if (err) {
+      console.log(err)
+    }
+    db = client.db('tgbot_test')
+  }
+)
+
 async function checkMessage(text, type, market) {
   if (type === 'ticker') {
     if (market === 'stonks') {
@@ -50,11 +61,13 @@ async function checkCryptoTicker(ID) {
 
 async function checkStonksTicker(ID) {
   //получаем имя бумаги
-  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ID}?modules=price`
+  const url = `https://financialmodelingprep.com/api/v3/quote/${ID.toString()}?apikey=${config.get(
+    'apikey'
+  )}`
   try {
     const response = await fetch(url)
     const data = await response.json()
-    if (data.quoteSummary.result[0].price.symbol === ID) {
+    if (data[0].symbol === ID) {
       console.log('Тикер прошел проверку')
       return true
     } else {
@@ -64,6 +77,98 @@ async function checkStonksTicker(ID) {
   } catch (e) {
     console.log('Ошибка в checkStonksTicker')
     return false
+  }
+}
+
+async function checkPortfolio(chatId, market) {
+  let dbData = await db
+    .collection(market)
+    .findOne(
+      { user: chatId.toString() },
+      { projection: { _id: 0, tickers: 1 } }
+    )
+  if (dbData === null || dbData.tickers.length <= 0) {
+    console.log('Проверка: Портфель пуст')
+    return false
+  } else {
+    console.log('Проверка: Портфель имеется')
+    return true
+  }
+}
+
+// Функция получения доступного для продажи количества тикеров
+async function countTickerForSell(chatId, market, ticker) {
+  let dbData = await db
+    .collection(market)
+    .findOne(
+      { user: chatId.toString() },
+      { projection: { _id: 0, tickers: 1 } }
+    )
+  if (dbData === null) {
+    return 0
+  } else {
+    for (let index in dbData.tickers) {
+      if (dbData.tickers[index].name === ticker) {
+        tickercount = dbData.tickers[index].full_count
+      } else {
+        tickercount = 0
+      }
+    }
+    return tickercount
+  }
+}
+
+// Функция пакетного получения цены тикеров
+async function getStonksPrice(ID) {
+  const url = `https://financialmodelingprep.com/api/v3/quote/${ID.toString()}?apikey=${config.get(
+    'apikey'
+  )}`
+  try {
+    const response = await fetch(url)
+    const data = await response.json()
+    let obj = []
+    for (let index in data) {
+      obj.push({
+        name: data[index].symbol,
+        price: data[index].price,
+      })
+    }
+    return obj
+  } catch (e) {
+    console.log('Ошибка в getBatchPrice', e)
+  }
+}
+
+// Функция пакетного получения цены криптовалют
+async function getCryptoPrice(ID) {
+  const url = `https://api.nomics.com/v1/currencies/ticker?key=${config.get(
+    'cryptoApiKey'
+  )}&ids=${ID.toString()}`
+  try {
+    const response = await fetch(url)
+    const data = await response.json()
+    let obj = []
+    for (let index in data) {
+      obj.push({ name: data[index].symbol, price: data[index].price })
+    }
+    return obj
+  } catch (e) {
+    console.log('Ошибка в getCryptoPrice', e)
+  }
+}
+
+// Функция получения цены Рубля
+async function getRublePrice(ID) {
+  console.time('RublePrice')
+  const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ID}?modules=price`
+  try {
+    const response = await fetch(url)
+    const json = await response.json()
+    const value = json.quoteSummary.result[0].price.regularMarketPrice.raw
+    console.timeEnd('RublePrice')
+    return value
+  } catch (e) {
+    console.log('Ошибка в getPrice')
   }
 }
 
@@ -101,4 +206,9 @@ module.exports = {
   checkStonksTicker,
   checkDate,
   compare,
+  checkPortfolio,
+  getStonksPrice,
+  getCryptoPrice,
+  countTickerForSell,
+  getRublePrice,
 }
