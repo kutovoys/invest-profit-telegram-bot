@@ -1,7 +1,6 @@
 const mongo = require('mongodb').MongoClient
 const config = require('config')
 const fetch = require('node-fetch')
-const Markup = require('telegraf/markup')
 
 mongo.connect(
   config.get('mongoUri'),
@@ -253,10 +252,6 @@ ${(cryptoData[1] * priceRub).toFixed(0)}${currency}   ➡️   ${(
     console.timeEnd('getAll')
     return messageArray
   } else {
-    inlineAll = Markup.inlineKeyboard([
-      Markup.callbackButton('Buy Stonks', 'stonksBuy'),
-      Markup.callbackButton('Buy Crypto', 'cryptoBuy'),
-    ])
     messageArray = ['Все ваши портфели пусты', 'nothing']
     console.timeEnd('getAll')
     return messageArray
