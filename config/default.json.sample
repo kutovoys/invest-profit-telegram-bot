@@ -1,6 +1,7 @@
 {
   "token": "Bot Token",
   "mongoUri": "mongoDB connection URL",
+  "mongoDB": "DB name",
   "apikey": "API key",
   "cryptoApiKey": "Crypto API key"
 }

@@ -9,7 +9,7 @@ mongo.connect(
     if (err) {
       console.log(err)
     }
-    db = client.db('tgbot_test')
+    db = client.db(config.get('mongoDB'))
   }
 )
 // Функция проверки сообщения в зависимости от типа
@@ -494,7 +494,6 @@ function checkDate(value) {
 
 function isFutureDate(idate) {
   let today = new Date().getTime()
-  console.log(today)
   idate = idate.split('.')
 
   idate = new Date(idate[2], idate[1] - 1, idate[0]).getTime()

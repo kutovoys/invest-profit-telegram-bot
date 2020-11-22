@@ -45,7 +45,7 @@ mongo.connect(
       console.log(err)
     }
 
-    db = client.db('tgbot_test')
+    db = client.db(config.get('mongoDB'))
     bot.launch()
     console.log('Bot started...')
   }
@@ -134,7 +134,6 @@ bot.action('stonksDollar', async (ctx) => {
     Markup.callbackButton('Sell', 'stonksSell'),
   ])
   message = await func.makeMessage(ctx.from.id, 'stonks', '$')
-  console.log(message)
   await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
 })
 bot.action('stonksRuble', async (ctx) => {
@@ -144,7 +143,6 @@ bot.action('stonksRuble', async (ctx) => {
     Markup.callbackButton('Sell', 'stonksSell'),
   ])
   message = await func.makeMessage(ctx.from.id, 'stonks', '₽')
-  console.log(message)
   await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
 })
 bot.action('stonksBuy', async (ctx) => {
