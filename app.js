@@ -27,14 +27,24 @@ bot.use(stage.middleware())
 
 const mainMenu = [['/stonks', '/crypto'], ['/all']]
 let inlineStonks = Markup.inlineKeyboard([
-  Markup.callbackButton('₽', 'stonksRuble'),
-  Markup.callbackButton('Buy', 'stonksBuy'),
-  Markup.callbackButton('Sell', 'stonksSell'),
+  [
+    Markup.callbackButton('₽', 'stonksRuble'),
+    Markup.callbackButton('Transactions', 'transactionsStonks'),
+  ],
+  [
+    Markup.callbackButton('Buy', 'stonksBuy'),
+    Markup.callbackButton('Sell', 'stonksSell'),
+  ],
 ])
 let inlineCrypto = Markup.inlineKeyboard([
-  Markup.callbackButton('$', 'cryptoDollar'),
-  Markup.callbackButton('Buy', 'cryptoBuy'),
-  Markup.callbackButton('Sell', 'cryptoSell'),
+  [
+    Markup.callbackButton('$', 'cryptoDollar'),
+    Markup.callbackButton('Transactions', 'transactionsCrypto'),
+  ],
+  [
+    Markup.callbackButton('Buy', 'cryptoBuy'),
+    Markup.callbackButton('Sell', 'cryptoSell'),
+  ],
 ])
 
 mongo.connect(
@@ -68,9 +78,14 @@ bot.help((ctx) => {
 bot.command('stonks', async (ctx) => {
   if (await func.checkPortfolio(ctx.from.id, 'stonks')) {
     inlineStonks = Markup.inlineKeyboard([
-      Markup.callbackButton('₽', 'stonksRuble'),
-      Markup.callbackButton('Buy', 'stonksBuy'),
-      Markup.callbackButton('Sell', 'stonksSell'),
+      [
+        Markup.callbackButton('₽', 'stonksRuble'),
+        Markup.callbackButton('Transactions', 'transactionsStonks'),
+      ],
+      [
+        Markup.callbackButton('Buy', 'stonksBuy'),
+        Markup.callbackButton('Sell', 'stonksSell'),
+      ],
     ])
     message = await func.makeMessage(ctx.from.id, 'stonks')
     ctx.reply(message[0], Extra.markdown().markup(inlineStonks))
@@ -85,9 +100,14 @@ bot.command('stonks', async (ctx) => {
 bot.command('crypto', async (ctx) => {
   if (await func.checkPortfolio(ctx.from.id, 'crypto')) {
     inlineCrypto = Markup.inlineKeyboard([
-      Markup.callbackButton('₽', 'cryptoRuble'),
-      Markup.callbackButton('Buy', 'cryptoBuy'),
-      Markup.callbackButton('Sell', 'cryptoSell'),
+      [
+        Markup.callbackButton('₽', 'cryptoRuble'),
+        Markup.callbackButton('Transactions', 'transactionsCrypto'),
+      ],
+      [
+        Markup.callbackButton('Buy', 'cryptoBuy'),
+        Markup.callbackButton('Sell', 'cryptoSell'),
+      ],
     ])
     message = await func.makeMessage(ctx.from.id, 'crypto', '$')
     ctx.reply(message[0], Extra.markdown().markup(inlineCrypto))
@@ -129,18 +149,28 @@ bot.command('all', async (ctx) => {
 })
 bot.action('stonksDollar', async (ctx) => {
   inlineStonks = Markup.inlineKeyboard([
-    Markup.callbackButton('₽', 'stonksRuble'),
-    Markup.callbackButton('Buy', 'stonksBuy'),
-    Markup.callbackButton('Sell', 'stonksSell'),
+    [
+      Markup.callbackButton('₽', 'stonksRuble'),
+      Markup.callbackButton('Transactions', 'transactionsStonks'),
+    ],
+    [
+      Markup.callbackButton('Buy', 'stonksBuy'),
+      Markup.callbackButton('Sell', 'stonksSell'),
+    ],
   ])
   message = await func.makeMessage(ctx.from.id, 'stonks', '$')
   await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
 })
 bot.action('stonksRuble', async (ctx) => {
   inlineStonks = Markup.inlineKeyboard([
-    Markup.callbackButton('$', 'stonksDollar'),
-    Markup.callbackButton('Buy', 'stonksBuy'),
-    Markup.callbackButton('Sell', 'stonksSell'),
+    [
+      Markup.callbackButton('$', 'stonksDollar'),
+      Markup.callbackButton('Transactions', 'transactionsStonks'),
+    ],
+    [
+      Markup.callbackButton('Buy', 'stonksBuy'),
+      Markup.callbackButton('Sell', 'stonksSell'),
+    ],
   ])
   message = await func.makeMessage(ctx.from.id, 'stonks', '₽')
   await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
@@ -195,22 +225,32 @@ bot.action('cryptoSell', async (ctx) => {
   ctx.scene.enter('getTicker')
 })
 bot.action('cryptoDollar', async (ctx) => {
-  inlineStonks = Markup.inlineKeyboard([
-    Markup.callbackButton('₽', 'cryptoRuble'),
-    Markup.callbackButton('Buy', 'cryptoBuy'),
-    Markup.callbackButton('Sell', 'cryptoSell'),
+  inlineCrypto = Markup.inlineKeyboard([
+    [
+      Markup.callbackButton('₽', 'cryptoRuble'),
+      Markup.callbackButton('Transactions', 'transactionsCrypto'),
+    ],
+    [
+      Markup.callbackButton('Buy', 'cryptoBuy'),
+      Markup.callbackButton('Sell', 'cryptoSell'),
+    ],
   ])
   message = await func.makeMessage(ctx.from.id, 'crypto', '$')
-  await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
+  await ctx.editMessageText(message[0], Extra.markdown().markup(inlineCrypto))
 })
 bot.action('cryptoRuble', async (ctx) => {
-  inlineStonks = Markup.inlineKeyboard([
-    Markup.callbackButton('$', 'cryptoDollar'),
-    Markup.callbackButton('Buy', 'cryptoBuy'),
-    Markup.callbackButton('Sell', 'cryptoSell'),
+  inlineCrypto = Markup.inlineKeyboard([
+    [
+      Markup.callbackButton('$', 'cryptoDollar'),
+      Markup.callbackButton('Transactions', 'transactionsCrypto'),
+    ],
+    [
+      Markup.callbackButton('Buy', 'cryptoBuy'),
+      Markup.callbackButton('Sell', 'cryptoSell'),
+    ],
   ])
   message = await func.makeMessage(ctx.from.id, 'crypto', '₽')
-  await ctx.editMessageText(message[0], Extra.markdown().markup(inlineStonks))
+  await ctx.editMessageText(message[0], Extra.markdown().markup(inlineCrypto))
 })
 
 bot.action('allRuble', async (ctx) => {
@@ -230,6 +270,13 @@ bot.action('allDollar', async (ctx) => {
   ])
   message = await func.getAll(ctx.from.id, '$')
   await ctx.editMessageText(message[0], Extra.markdown().markup(inlineAll))
+})
+
+bot.action('transactionsStonks', async (ctx) => {
+  ctx.reply(await func.getTransactions(ctx.from.id, 'stonks'), Extra.markdown())
+})
+bot.action('transactionsCrypto', async (ctx) => {
+  ctx.reply(await func.getTransactions(ctx.from.id, 'crypto'), Extra.markdown())
 })
 
 bot.hears('️⬅️ На главную', (ctx) => {

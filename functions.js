@@ -151,6 +151,7 @@ async function getCryptoPrice(ID) {
 
 // Функция создания сообщения вывода общей информации по всем портфелям
 async function getAll(chatId, currency) {
+  getTransactions(chatId, 'stonks')
   console.time('getAll')
   if (
     (await checkPortfolio(chatId, 'stonks')) &&
@@ -255,6 +256,44 @@ ${(cryptoData[1] * priceRub).toFixed(0)}${currency}   ➡️   ${(
     messageArray = ['Все ваши портфели пусты', 'nothing']
     console.timeEnd('getAll')
     return messageArray
+  }
+}
+// Функция сортировки по дате
+function sortDyDate(a, b) {
+  a = a.date.split('.').reverse().join('')
+  b = b.date.split('.').reverse().join('')
+  return a > b ? 1 : a < b ? -1 : 0
+}
+// Функция получения списка транзакций
+async function getTransactions(chatId, market) {
+  let dbData = await db
+    .collection(market)
+    .findOne(
+      { user: chatId.toString() },
+      { projection: { _id: 0, transactions: 1 } }
+    )
+  if (dbData === null || dbData.transactions.length <= 0) {
+    MESSAGE = 'У вас нет транзакций'
+    return MESSAGE
+  } else {
+    //console.log(dbData.transactions)
+    dbData = dbData.transactions.sort(sortDyDate)
+    //console.log(dbData)
+    MESSAGE = 'Список ваших транзакций:\n'
+    for (let index in dbData) {
+      if (dbData[index].operation === 'buy') {
+        operation = 'Покупка'
+      } else {
+        operation = 'Продажа'
+      }
+      MESSAGE += `${Number(index) + 1}. ${dbData[index].date} ${operation} *${
+        dbData[index].ticker_name
+      }* в количестве: *${dbData[index].trans_count}* по цене *${
+        dbData[index].trans_price
+      }$*\n`
+    }
+    console.log(MESSAGE)
+    return MESSAGE
   }
 }
 
@@ -526,4 +565,5 @@ module.exports = {
   makeMessage,
   addToPortfolio,
   isFutureDate,
+  getTransactions,
 }
